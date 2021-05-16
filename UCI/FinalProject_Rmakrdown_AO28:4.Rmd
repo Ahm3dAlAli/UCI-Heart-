@@ -1,0 +1,545 @@
+---
+title: "FinalProject"
+author: "Ahmed Al-Ali"
+date: "4/7/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(corrplot)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+library(gtools)
+```
+
+```{r}
+ht<-read.csv("/Users/ahmed/Documents/Penn state university/Semesters/Spring 2021/STAT 440/Projects/heart.csv")
+ht
+```
+# Introduction 
+
+## Background and Context 
+
+### Background of data
+Data set which is related to heart health is scientific produced originally by Combination of hospitals , medical center and institutions  .These measures are the most fitted to represent our data because they are the variables that affect heart health , from the major vessels connecting to the heart to some diagnostic measures related to nutrients in blood such as sugar,cholesterol . Some more phenomena represented are exercise related measure to see the performance of the heart organ. We think the data are well represented because it takes into account different factors which are in summary Nutrients,Activity and  Pain/ Defect in body. The data set is a well representation as number of surveys are about 300 and gained from four different countries from people with different races and ethnicity.
+
+### Context of data 
+
+The context of data are composed of two preliminary subjects which are the data explanatory and statistical data analysis in which we first  understand the data and relations  and then we perform our findings and methodology written in our proposal  "Questions and Methods "
+
+ 
+# Analysis
+
+## Explanotary 
+
+### Data 
+
+We have 14 variables that diagnose weather each person has a heart disease or not and we do currently have 303 patients 
+```{r}
+str(ht)
+```
+Meaning of each variable  
+
+
+age: The person's age in years
+sex: The person's sex (1 = male, 0 = female)
+cp: The chest pain experienced (Value 0: typical angina, Value 1: atypical angina, Value 2: non-anginal pain, Value 3: asymptomatic)
+trestbps: The person's resting blood pressure (mm Hg on admission to the hospital)
+chol: The person's cholesterol measurement in mg/dl
+fbs: The person's fasting blood sugar (> 120 mg/dl, 1 = true; 0 = false)
+restecg: Resting electrocardiographic measurement (0 = normal, 1 = having ST-T wave abnormality, 2 = showing probable or definite left ventricular hypertrophy by Estes' criteria)
+thalach: The person's maximum heart rate achieved
+exang: Exercise induced angina (1 = yes; 0 = no)
+oldpeak: ST depression induced by exercise relative to rest ('ST' relates to positions on the ECG plot)
+slope: the slope of the peak exercise ST segment (Value 1: upsloping, Value 2: flat, Value 3: downsloping)
+ca: The number of major vessels (0-3)
+thal: A blood disorder called thalassemia (1 = normal; 2 = fixed defect; 3 = reversable defect)
+target: Heart disease (0 = no, 1 = yes)
+
+
+### Cleaning data 
+
+Checking if the number of rows is equal to the data originally if we remove invalid data points since equal to original that means no invalid inputs 
+```{r}
+nrow(na.omit(ht)) == nrow(ht)
+```
+
+#### outlier removal  but assess if needed by box plots 
+
+For outliers we would look at Discrete variables which are not nomoinal and continuous only 
+```{r}
+print(boxplot(ht[,c(1,4,5,8)], main="Heart metric ", 
+   xlab="Variables", ylab="Frequency"))
+```
+
+When considering whether to remove an outlier,we need to evaluate if it appropriately reflects your target population, subject-area, research question, and research methodology. Did anything unusual happen while measuring these observations, such as power failures, abnormal experimental conditions, or anything else out of the norm? Is there anything substantially different about an observation, Did measurement or data entry errors occur?
+In which we implement bootstrapping techniques that use the sample data as they are and don’t make assumptions about distributions.
+
+This type of analyses allow you to capture the full variability of your dataset without violating assumptions and skewing results.
+
+In our case as we  can see that we shall remove the highest point of cholesterol about 500  because its very abnormal and the lowest heart rate value about 80 
+
+From previous output we shall keep all patients whose values of heart rate are greater than 85 and all patients in which cholesterol level are less than 500 , seemingly their are couple of high cholesterol levels but those may indicated some valuable information 
+```{r}
+ht<-ht[ht$chol<500 && ht$thalach>85,]
+```
+
+
+
+### Feature engineering for bayesian inference 
+
+#### Transfroming our data into binary values  and making them meaningful
+```{r}
+ht$thal<-ifelse(ht$thal== 2 || ht$cp== 3 , yes = 1 , no = 0)
+
+ht$cp_asymptomatic<-ifelse(ht$cp== 3 , yes = 1 , no = 0)
+ht$cp_atypical_angina<-ifelse(ht$cp== 1 , yes = 1 , no = 0)
+ht$cp_non_angin_alpain<-ifelse(ht$cp== 2 , yes = 1 , no = 0)
+ht$cp_typical_angina<-ifelse(ht$cp== 0 , yes = 1 , no = 0)
+
+ht$restecg_normal<-ifelse(ht$restecg== 0 , yes = 1 , no = 0)
+ht$restecg_wave_abnormality<-ifelse(ht$restecg== 1 , yes = 1 , no = 0)
+ht$restecg_ventricular_hypertrophy<-ifelse(ht$restecg== 2, yes = 1 , no = 0)
+
+ht$slope_down_sloping<-ifelse(ht$slope== 2 , yes = 1 , no = 0)
+ht$slope_flat<-ifelse(ht$thal== 1 , yes = 1 , no = 0)
+ht$slope_up_sloping<-ifelse(ht$thal== 0 , yes = 1 , no = 0)
+
+#Then we remove old un needed columns 
+ht$cp =NULL
+ht$restecg = NULL
+ht$slope = NULL
+```
+
+
+
+
+
+## Statistical
+
+### Permutation test 
+This test carries out the correlation between each set of variables using different tests according to varaible type 
+-pearson correlation  between continuous variables 
+-point-biserial correlation between  categorical and continuous 
+-Crammer's V  correlation between categorical varaibles  
+
+our test statistic is given below for each case and p-value estimated using monte carlo estimation 
+
+Pearson
+$$
+T_P=\frac{r\sqrt{n-2}}{\sqrt{1-r^2}}
+$$
+where n is the number of observations and r is the sample correlation 
+
+
+$$
+T_{Pb}=\frac{(\bar y_1-\bar y_0)\sqrt{pq}}{s_N}
+$$
+where $y_1$ is mean of numerical variable given when the nominal is 1 ,$y_0$ is mean of numerical variable given when the nominal is 0,p is the proportion where the nominal value is 1 , q  is the proportion where the nominal value is 0, $s_N$ the sample standard deviation of numerical values 
+
+Crammer V
+
+$$
+T_{C}=\sqrt{\frac{\chi^2}{n}}
+$$
+$\chi^2$ is the observed chi sqaure test between variables , n is the total observationn 
+
+$$
+H_o : \rho = 0 \:\: vs \:\: H_l : \rho \neq 0
+$$
+
+
+```{r}
+
+T_perm_corr<-function(data){
+  
+  #creating list of varaibles against each other 
+  var_comb<-combinations(ncol(ht),2,colnames(ht),repeats=TRUE)
+  var<-data.frame(Var1=rep(1:nrow(var_comb)))
+  var<-cbind(var,c(var_comb[,1]))
+  var<-cbind(var,c(var_comb[,2]))
+  var$Var1=NULL
+  colnames(var)<-c("Var1","Var2")
+  var<-var[var$Var1 != var$Var2,]
+
+  #Sepereating variables to perform correct test 
+  categoricalva = c("sex","cp_asymptomatic","cp_atypical_angina","cp_non_angin_alpain","cp_typical_angina","restecg_normal","restecg_wave_abnormality","restecg_ventricular_hypertrophy","slope_down_sloping","slope_flat","slope_up_sloping","fbs","restecg","exang",'slope',"thal","target")
+  numericva = c("age","trestbps","chol","thalach","oldpeak","ca")
+  
+  #T_perm table
+  T_obs=0
+  T_perm_corr_data=data.frame(Attributes  = c() , T_perm=c() ,P_value=c() )
+  #calcualting the T_perm relaizations and p_value of test above between each varaible 
+  for (i in categoricalva)
+  { 
+    for( j in numericva)
+    { K<-10000
+      T_perm<-numeric(K)
+      if ((i %in% categoricalva) && (j %in% categoricalva ))
+      {  
+          n=nrow(data)
+          chi=chisq.test(data[,i],data[,j])$statistic[[1]]
+          T_obs=sqrt(chi/n)
+          for(m in 1:K)
+          {
+            var_1m<-sample(data[,i],replace=FALSE)
+            var_2m<-sample(data[,j],replace=FALSE)
+            chi_m=chisq.test(var_1m,var_2m)$statistic[[1]]
+            T_perm[m]=sqrt(chi_m/n)
+          }
+      }
+      if ((i %in% categoricalva) && (j %in% numericva ))
+      {   print("ok cat num")
+          y1=mean(subset(data,data[,i]==1,select=j)[[1]])
+          y0=mean(subset(data,data[,i]==0,select=j)[[1]])
+          p=sum(data[,i]==1)/nrow(data)
+          q=sum(data[,i]==0)/nrow(data)
+          sN=sd(data[,j])
+          T_obs=((y1-y0)*sqrt(p*q))/sN
+
+          for(m in 1:K)
+          { 
+            
+            var_1m<-sample(data[,i],replace=FALSE)
+            var_2m<-sample(data[,j],replace=FALSE)
+            datemp=data.frame(var1=var_1m,var2=var_2m)
+            
+            y1_m=mean(subset(datemp,datemp[,"var1"]==1,select=var2)[[1]])
+            y0_m=mean(subset(datemp,datemp[,"var1"]==0,select=var2)[[1]])
+            print("assigment done of y1 and y0 m")
+            p_m=sum(datemp[,"var1"]==1)/nrow(datemp)
+            q_m=sum(datemp[,"var1"]==0)/nrow(datemp)
+            sN_m=sd(datemp[,"var1"])
+            T_perm[m]=((y1_m-y0_m)*sqrt(p_m*q_m))/sN_m
+
+          }
+      }
+      if ((j %in% categoricalva) && (i %in% numericva ))
+      {   y1=mean(subset(data,data[,j]==1,select=i)[[1]])
+          y0=mean(subset(data,data[,j]==0,select=i)[[1]])
+          p=sum(data[,j]==1)/nrow(data)
+          q=sum(data[,j]==0)/nrow(data)
+          sN=sd(data[,i])
+          T_obs=((y1-y0)*sqrt(p*q))/sN
+          for(m in 1:K)
+          {
+            var_2m<-sample(data[,i],replace=FALSE)
+            var_1m<-sample(data[,j],replace=FALSE)
+            datemp=data.frame(var1=var_1m,var2=var_2m)
+            y1_m=mean(subset(datemp,datemp[,"var1"]==1,select=var2)[[1]])
+            y0_m=mean(subset(datemp,datemp[,"var1"]==0,select=var2)[[1]])
+            p_m=sum(datemp[,"var1"]==1)/nrow(datemp)
+            q_m=sum(datemp[,"var1"]==0)/nrow(datemp)
+            sN_m=sd(datemp[,"var1"])
+            T_perm[m]=((y1_m-y0_m)*sqrt(p_m*q_m))/sN_m
+
+          }          
+      }
+      
+      if ((i %in% numericva) && (j %in% numericva ))
+      {
+        n=nrow(data)
+        cor=cor(data[,i],data[,j])
+        T_obs=(cor*sqrt(n-2))/(sqrt(1-(cor^2)))
+        for(m in 1:K)
+          {
+            var_1m<-sample(data[,i],replace=FALSE)
+            var_2m<-sample(data[,j],replace=FALSE)
+            cor_m=cor(var_1m,var_2m)
+            T_perm[m]=(cor_m*sqrt(n-2))/sqrt(1-cor_m^2)
+
+     
+        }
+      }
+        
+    
+
+       temp=data.frame(Attribute=paste(i,"vs.",j),T_perm=paste(T_perm,sep="",collapse=","),P_value=mean(T_perm>T_obs))
+       T_perm_corr_data=rbind(T_perm_corr_data,temp)
+      }
+      
+      
+  }
+  return(T_perm_corr_data)
+}
+
+T_perm_data<-T_perm_corr(ht)
+T_perm_data
+
+
+```
+This table summaries varaibles hypothesis testing of correlation between them performed using permutation test we have the p -values that tells us weather we accept that their is sufficient evidence to prove our null hypothesis is correct if value is greater than $\alpha$ and vice versa, but it does not inform us if the population true value is actually zero but it can be approximated to either one to the values of the hypothesis Whether intentional or not, there is a tendency for p-values to devolve into a conclusion of “significant” or “not significant” based on whether the p-value is less than or equal to 0.05.
+in which the closer the value to zero this suggests that their is no sufficient evidence to accept our null hypothesis 
+
+minimizing the table to display only ones with sufficient evidence that the variables are correlated 
+
+```{r}
+T_perm_data<-T_perm_data[T_perm_data$P_value<0.05,]
+T_perm_data
+```
+As we can see now we truncated variables ,  in which we have sufficient evidence that  those variables are correlated 
+
+now we plot the permutations of each  
+
+```{r}
+
+hist(as.numeric(unlist(strsplit(T_perm_data[1,"T_perm"], ","))), breaks=50, xlim=c(-10,10), ylim=c(0,1000),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="target vs. thalach" )
+
+hist(as.numeric(unlist(strsplit(T_perm_data[2,"T_perm"], ","))), breaks=25, xlim=c(-10,10), ylim=c(0,1800),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="	target vs. cp_asymptomatic	" )
+
+hist(as.numeric(unlist(strsplit(T_perm_data[3,"T_perm"], ","))), breaks=25, xlim=c(-10,10), ylim=c(0,1800),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="	target vs. cp_atypical_angina" )
+
+
+hist(as.numeric(unlist(strsplit(T_perm_data[4,"T_perm"], ","))), breaks=25, xlim=c(-10,10), ylim=c(0,1800),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="	target vs. cp_non_angin_alpain" )
+
+hist(as.numeric(unlist(strsplit(T_perm_data[5,"T_perm"], ","))), breaks=25, xlim=c(-10,10), ylim=c(0,1800),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="target vs. restecg_wave_abnormality" )
+
+hist(as.numeric(unlist(strsplit(T_perm_data[6,"T_perm"], ","))), breaks=25, xlim=c(-10,10), ylim=c(0,1800),col=rgb(1,0,0,0.5), xlab="T_Perm",ylab="Frequency", main="	target vs. slope_down_sloping" )
+
+
+
+
+
+
+
+```
+
+
+### Bayesian Inference
+Here we will model the risk of heart disease as a bernouli random variable conditioned on a categorical variable. 
+
+#### Sex
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$sex)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['sex']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['sex']==values[i],]) * (1 - mean(ht[ht['sex']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+```
+The probability of men getting heart disease is significantly higher than for women. 
+
+#### Chest Pain
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$cp)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['cp']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['cp']==values[i],]) * (1 - mean(ht[ht['cp']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+
+```
+
+#### fasting blood sugar
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$fbs)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['fbs']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['fbs']==values[i],]) * (1 - mean(ht[ht['fbs']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i+1,add=T)
+}
+
+```
+
+#### restecg
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$restecg)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['restecg']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['restecg']==values[i],]) * (1 - mean(ht[ht['restecg']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+
+```
+
+#### Exercise Induced Angina
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$exang)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['exang']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['exang']==values[i],]) * (1 - mean(ht[ht['exang']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+
+```
+This is significant
+
+#### Slope
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$slope)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['slope']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['slope']==values[i],]) * (1 - mean(ht[ht['slope']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+```
+
+
+#### Number of major vessels
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$ca)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['ca']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['ca']==values[i],]) * (1 - mean(ht[ht['ca']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+```
+
+#### thalassemia
+```{r}
+set.seed(42)
+
+# unique values
+values <- unique(ht$thal)
+
+# prior
+alpha_prior <- 1
+beta_prior <- 1
+
+# store posteriors in a vector
+alpha_posteriors <- numeric(length(values))
+beta_posteriors <- numeric(length(values))
+i <- 0
+for (i in 1:length(values)) {
+  alpha_posteriors[i] <- alpha_prior + sum(ht[ht['thal']==values[i],]$target)
+  beta_posteriors[i] <- beta_prior + nrow(ht[ht['thal']==values[i],]) * (1 - mean(ht[ht['thal']==values[i],]$target))
+}
+
+# plot curves
+curve(dbeta(x,alpha_prior,beta_prior),from=0,to=1,ylim=c(0,10))
+for (i in 1:length(values)) {
+  curve(dbeta(x,shape1=alpha_posteriors[i],shape2=beta_posteriors[i]),col=i,add=T)
+}
+```
+
+
+#predicting the probability of getting a heart disease 
+
+
+
+## Interpretation
+
+
+## Conclusion 
+
